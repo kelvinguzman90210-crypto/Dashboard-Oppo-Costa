@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OPPO Costa | Control de Ventas y Activaciones</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--green:#10b981;--dark:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--card:#fff;--red:#ef4444;--amber:#f59e0b}
+*{box-sizing:border-box} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--dark)}
+header{background:#fff;border-bottom:1px solid var(--line);padding:18px 28px;position:sticky;top:0;z-index:5}
+.header{max-width:1400px;margin:auto;display:flex;gap:18px;align-items:center;justify-content:space-between}.brand{display:flex;gap:12px;align-items:center}.logo{width:44px;height:44px;border-radius:12px;background:var(--green);display:grid;place-items:center;color:#fff;font-weight:800}.brand h1{font-size:20px;margin:0}.brand p{margin:3px 0 0;color:var(--muted);font-size:12px}
+main{max-width:1400px;margin:auto;padding:24px}.drop{border:2px dashed #94a3b8;background:#fff;border-radius:18px;padding:28px;text-align:center;cursor:pointer;transition:.2s}.drop.drag{border-color:var(--green);background:#ecfdf5}.drop strong{display:block;font-size:18px;margin-bottom:6px}.drop small{color:var(--muted)}
+.controls{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:12px;margin:18px 0}.control{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}.control label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}.control select,.control input{width:100%;border:0;outline:0;font-size:14px;background:transparent}
+.cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px}.card .k{font-size:12px;color:var(--muted)}.card .v{font-size:28px;font-weight:800;margin-top:7px}.card .s{font-size:11px;color:var(--muted);margin-top:5px}.good{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;overflow:hidden}.panel h2{font-size:15px;margin:0 0 12px}.tablewrap{overflow:auto;max-height:420px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#fff;color:var(--muted);font-weight:600}.badge{padding:3px 7px;border-radius:999px;font-size:10px;font-weight:700}.b-green{background:#dcfce7;color:#166534}.b-red{background:#fee2e2;color:#991b1b}
+.full{grid-column:1/-1}.barrow{display:grid;grid-template-columns:210px 1fr 45px;gap:10px;align-items:center;margin:9px 0;font-size:12px}.bar{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--green)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;cursor:pointer;font-weight:600}.btn.primary{background:var(--green);color:#fff;border-color:var(--green)}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+@media(max-width:1000px){.cards{grid-template-columns:repeat(2,1fr)}.controls{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.full{grid-column:auto}}@media(max-width:600px){main{padding:14px}.cards,.controls{grid-template-columns:1fr}.header{align-items:flex-start}.actions{justify-content:flex-end}}
+</style>
+</head>
+<body>
+<header><div class="header"><div class="brand"><div class="logo">O</div><div><h1>OPPO Costa · Ventas & Activaciones</h1><p>Procesamiento local del Excel. El archivo no se sube a ningún servidor.</p></div></div><div class="actions"><button class="btn" id="resetBtn">Borrar histórico local</button><button class="btn primary" id="pickBtn">Cargar Excel</button></div></div></header>
+<main>
+<input id="fileInput" type="file" accept=".xlsx,.xls" hidden />
+<section id="drop" class="drop"><strong>Arrastra aquí el reporte diario de IMEI</strong><small>o haz clic para seleccionar el archivo. La página reconoce automáticamente las columnas del reporte.</small></section>
+<section id="dashboard" style="display:none">
+<div class="controls">
+<div class="control"><label>Fecha de análisis</label><input type="date" id="dateFilter"></div>
+<div class="control"><label>Promotor / Reporter</label><select id="staffFilter"><option value="">Todos</option></select></div>
+<div class="control"><label>Punto de venta</label><select id="storeFilter"><option value="">Todos</option></select></div>
+<div class="control"><label>Modelo</label><select id="modelFilter"><option value="">Todos</option></select></div>
+<div class="control"><label>Buscar IMEI</label><input id="imeiFilter" placeholder="IMEI..." inputmode="numeric"></div>
+</div>
+<div class="cards">
+<div class="card"><div class="k">Ventas del día</div><div class="v" id="salesDay">0</div><div class="s" id="salesMonthTxt"></div></div>
+<div class="card"><div class="k">Activaciones del día</div><div class="v good" id="actsDay">0</div><div class="s">Fecha de Activated Date</div></div>
+<div class="card"><div class="k">Ventas del día activadas</div><div class="v good" id="salesActivated">0</div><div class="s">Venta del día con activación registrada</div></div>
+<div class="card"><div class="k">Ventas del día pendientes</div><div class="v bad" id="salesPending">0</div><div class="s">Sin fecha de activación</div></div>
+<div class="card"><div class="k">% activación ventas del día</div><div class="v" id="activationRate">0%</div><div class="s">Sobre ventas filtradas del día</div></div>
+<div class="card"><div class="k">Nuevas activaciones vs. carga anterior</div><div class="v warn" id="newActs">—</div><div class="s" id="snapshotTxt">Primera carga</div></div>
+</div>
+<div class="grid">
+<div class="panel"><h2>Ventas por promotor</h2><div id="staffBars"></div></div>
+<div class="panel"><h2>Ventas por modelo</h2><div id="modelBars"></div></div>
+<div class="panel full"><h2>Detalle de ventas del día</h2><div class="tablewrap"><table><thead><tr><th>Hora</th><th>PDV</th><th>Modelo</th><th>IMEI</th><th>Promotor / Reporter</th><th>Activación</th><th>Estado</th></tr></thead><tbody id="salesBody"></tbody></table></div></div>
+<div class="panel full"><h2>Activaciones registradas en la fecha seleccionada</h2><div class="tablewrap"><table><thead><tr><th>Hora activación</th><th>PDV</th><th>Modelo</th><th>IMEI</th><th>Fecha venta</th><th>Reporter</th></tr></thead><tbody id="actsBody"></tbody></table></div></div>
+</div>
+</section>
+</main>
+<script>
+let rows=[];
+const el=id=>document.getElementById(id);
+const parseDate=v=>{if(v===null||v===undefined||v==='')return null;if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);return d?new Date(d.y,d.m-1,d.d,d.H||0,d.M||0,d.S||0):null;} const s=String(v).trim(); const d=new Date(s.replace(' ','T')); return isNaN(d)?null:d};
+const ymd=d=>d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):'';
+const hm=d=>d?String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'):'';
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function normalize(raw){return raw.map(r=>({store:r['Store Name']||'',model:r['Model Name']||r['Model Code']||'',imei:String(r['IMEI']??'').replace(/\.0$/,''),sell:parseDate(r['Sell out date']),active:parseDate(r['Activated Date']),reporter:r['Reporter(Sellout)']||r['Reporter Name']||''})).filter(r=>r.imei)}
+function uniq(key){return [...new Set(rows.map(r=>r[key]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'))}
+function fillSelect(id,key){const s=el(id), old=s.value; s.innerHTML='<option value="">Todos</option>'+uniq(key).map(v=>'<option>'+esc(v)+'</option>').join(''); if([...s.options].some(o=>o.value===old))s.value=old}
+function getBase(){const staff=el('staffFilter').value, store=el('storeFilter').value, model=el('modelFilter').value, imei=el('imeiFilter').value.trim();return rows.filter(r=>(!staff||r.reporter===staff)&&(!store||r.store===store)&&(!model||r.model===model)&&(!imei||r.imei.includes(imei)))}
+function bars(data,container){const entries=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,12), max=Math.max(1,...entries.map(x=>x[1])); el(container).innerHTML=entries.length?entries.map(([k,v])=>'<div class="barrow"><span title="'+esc(k)+'">'+esc(k.length>30?k.slice(0,29)+'…':k)+'</span><div class="bar"><i style="width:'+(v/max*100)+'%"></i></div><b>'+v+'</b></div>').join(''):'<div class="empty">Sin datos para este filtro.</div>'}
+function snapshotDiff(){const key='oppo-imei-snapshot-v1'; let prev={}; try{prev=JSON.parse(localStorage.getItem(key)||'{}')}catch{} const now={}; rows.forEach(r=>now[r.imei]=!!r.active); const existed=Object.keys(prev).length>0; let n=0; if(existed)for(const [imei,active] of Object.entries(now)) if(active && prev[imei]===false)n++; localStorage.setItem(key,JSON.stringify(now)); el('newActs').textContent=existed?n:'—'; el('snapshotTxt').textContent=existed?'IMEI que pasaron de pendiente a activado':'Primera carga: se guardó la referencia para mañana'}
+function render(){const date=el('dateFilter').value; const base=getBase(); const daySales=base.filter(r=>r.sell&&ymd(r.sell)===date); const dayActs=base.filter(r=>r.active&&ymd(r.active)===date); const actSales=daySales.filter(r=>r.active); const pending=daySales.filter(r=>!r.active); const month=date.slice(0,7); const monthSales=base.filter(r=>r.sell&&ymd(r.sell).startsWith(month)); el('salesDay').textContent=daySales.length; el('actsDay').textContent=dayActs.length; el('salesActivated').textContent=actSales.length; el('salesPending').textContent=pending.length; el('activationRate').textContent=daySales.length?(actSales.length/daySales.length*100).toFixed(1)+'%':'0%'; el('salesMonthTxt').textContent=monthSales.length+' ventas en el mes filtrado';
+const sc={}; daySales.forEach(r=>sc[r.reporter||'Sin reporter']=(sc[r.reporter||'Sin reporter']||0)+1); bars(sc,'staffBars'); const mc={}; daySales.forEach(r=>mc[r.model||'Sin modelo']=(mc[r.model||'Sin modelo']||0)+1); bars(mc,'modelBars');
+el('salesBody').innerHTML=daySales.sort((a,b)=>b.sell-a.sell).map(r=>'<tr><td>'+hm(r.sell)+'</td><td>'+esc(r.store)+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.imei)+'</td><td>'+esc(r.reporter)+'</td><td>'+(r.active?esc(ymd(r.active)+' '+hm(r.active)):'—')+'</td><td><span class="badge '+(r.active?'b-green':'b-red')+'">'+(r.active?'ACTIVADO':'PENDIENTE')+'</span></td></tr>').join('')||'<tr><td colspan="7" class="empty">No hay ventas para esta fecha/filtro.</td></tr>';
+el('actsBody').innerHTML=dayActs.sort((a,b)=>b.active-a.active).map(r=>'<tr><td>'+hm(r.active)+'</td><td>'+esc(r.store)+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.imei)+'</td><td>'+(r.sell?esc(ymd(r.sell)+' '+hm(r.sell)):'—')+'</td><td>'+esc(r.reporter)+'</td></tr>').join('')||'<tr><td colspan="6" class="empty">No hay activaciones para esta fecha/filtro.</td></tr>';
+}
+async function loadFile(file){const data=await file.arrayBuffer(); const wb=XLSX.read(data,{type:'array',cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; const raw=XLSX.utils.sheet_to_json(ws,{defval:''}); const cols=raw[0]?Object.keys(raw[0]):[]; const missing=['IMEI','Sell out date','Activated Date'].filter(c=>!cols.includes(c)); if(missing.length){alert('El archivo no contiene estas columnas esperadas: '+missing.join(', '));return} rows=normalize(raw); if(!rows.length){alert('No se encontraron registros válidos.');return} fillSelect('staffFilter','reporter');fillSelect('storeFilter','store');fillSelect('modelFilter','model'); const maxDate=rows.reduce((m,r)=>r.sell&&(!m||r.sell>m)?r.sell:m,null)||new Date(); el('dateFilter').value=ymd(maxDate); el('dashboard').style.display='block'; snapshotDiff(); render(); window.scrollTo({top:250,behavior:'smooth'});}
+['dateFilter','staffFilter','storeFilter','modelFilter'].forEach(id=>el(id).addEventListener('change',render)); el('imeiFilter').addEventListener('input',render); el('fileInput').addEventListener('change',e=>e.target.files[0]&&loadFile(e.target.files[0])); el('pickBtn').onclick=()=>el('fileInput').click(); el('drop').onclick=()=>el('fileInput').click(); ['dragenter','dragover'].forEach(evt=>el('drop').addEventListener(evt,e=>{e.preventDefault();el('drop').classList.add('drag')})); ['dragleave','drop'].forEach(evt=>el('drop').addEventListener(evt,e=>{e.preventDefault();el('drop').classList.remove('drag')})); el('drop').addEventListener('drop',e=>e.dataTransfer.files[0]&&loadFile(e.dataTransfer.files[0])); el('resetBtn').onclick=()=>{if(confirm('¿Borrar la comparación guardada de cargas anteriores en este navegador?')){localStorage.removeItem('oppo-imei-snapshot-v1');el('newActs').textContent='—';el('snapshotTxt').textContent='Histórico local borrado';}};
+</script>
+</body>
+</html>
