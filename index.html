@@ -45,10 +45,9 @@ main{max-width:1400px;margin:auto;padding:24px}.drop{border:2px dashed #94a3b8;b
 <div class="card"><div class="k">Nuevas activaciones vs. carga anterior</div><div class="v warn" id="newActs">—</div><div class="s" id="snapshotTxt">Primera carga</div></div>
 </div>
 <div class="grid">
-<div class="panel"><h2>Ventas por promotor</h2><div id="staffBars"></div></div>
-<div class="panel"><h2>Ventas por modelo</h2><div id="modelBars"></div></div>
+<div class="panel"><h2>Ventas del mes por promotor</h2><div id="staffBars"></div></div>
+<div class="panel"><h2>Ventas del mes por modelo</h2><div id="modelBars"></div></div>
 <div class="panel full"><h2>Detalle de ventas del día</h2><div class="tablewrap"><table><thead><tr><th>Hora</th><th>PDV</th><th>Modelo</th><th>IMEI</th><th>Promotor / Reporter</th><th>Activación</th><th>Estado</th></tr></thead><tbody id="salesBody"></tbody></table></div></div>
-<div class="panel full"><h2>Activaciones registradas en la fecha seleccionada</h2><div class="tablewrap"><table><thead><tr><th>Hora activación</th><th>PDV</th><th>Modelo</th><th>IMEI</th><th>Fecha venta</th><th>Reporter</th></tr></thead><tbody id="actsBody"></tbody></table></div></div>
 </div>
 </section>
 </main>
@@ -62,15 +61,26 @@ const hm=d=>d?String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).pa
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 function normalize(raw){return raw.map(r=>({store:r['Store Name']||'',model:r['Model Name']||r['Model Code']||'',imei:String(r['IMEI']??'').replace(/\.0$/,''),sell:parseDate(r['Sell out date']||r['Timing Date [DateTime]']||r['Timing Date [Date]']),active:parseDate(r['Activated Date']),reporter:r['Reporter(Sellout)']||r['Reporter Name']||''})).filter(r=>r.imei)}
 function uniq(key){return [...new Set(rows.map(r=>r[key]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'))}
-function fillSelect(id,key){const s=el(id), old=s.value; s.innerHTML='<option value="">Todos</option>'+uniq(key).map(v=>'<option>'+esc(v)+'</option>').join(''); if([...s.options].some(o=>o.value===old))s.value=old}
+function recentPromoters(date){
+ const end=parseDate(date);
+ if(!end)return [];
+ const start=new Date(end.getFullYear(),end.getMonth()-3,1);
+ const last=new Date(end.getFullYear(),end.getMonth(),end.getDate()+1);
+ return [...new Set(rows.filter(r=>r.sell&&r.sell>=start&&r.sell<last&&r.reporter).map(r=>r.reporter))].sort((a,b)=>a.localeCompare(b,'es'));
+}
+function fillSelect(id,key){
+ const s=el(id),old=s.value;
+ const values=key==='reporter'?recentPromoters(el('dateFilter').value):uniq(key);
+ s.innerHTML='<option value="">Todos</option>'+values.map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('');
+ s.value=values.includes(old)?old:'';
+}
 function getBase(){const staff=el('staffFilter').value, store=el('storeFilter').value, model=el('modelFilter').value, imei=el('imeiFilter').value.trim();return rows.filter(r=>(!staff||r.reporter===staff)&&(!store||r.store===store)&&(!model||r.model===model)&&(!imei||r.imei.includes(imei)))}
-function bars(data,container){const entries=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,12), max=Math.max(1,...entries.map(x=>x[1])); el(container).innerHTML=entries.length?entries.map(([k,v])=>'<div class="barrow"><span title="'+esc(k)+'">'+esc(k.length>30?k.slice(0,29)+'…':k)+'</span><div class="bar"><i style="width:'+(v/max*100)+'%"></i></div><b>'+v+'</b></div>').join(''):'<div class="empty">Sin datos para este filtro.</div>'}
+function bars(data,container){const entries=Object.entries(data).sort((a,b)=>b[1]-a[1]), max=Math.max(1,...entries.map(x=>x[1])); el(container).innerHTML=entries.length?entries.map(([k,v])=>'<div class="barrow"><span title="'+esc(k)+'">'+esc(k.length>30?k.slice(0,29)+'…':k)+'</span><div class="bar"><i style="width:'+(v/max*100)+'%"></i></div><b>'+v+'</b></div>').join(''):'<div class="empty">Sin datos para este filtro.</div>'}
 function snapshotDiff(){const key='oppo-imei-snapshot-v1'; let prev={}; try{prev=JSON.parse(localStorage.getItem(key)||'{}')}catch{} const now={}; rows.forEach(r=>now[r.imei]=!!r.active); const existed=Object.keys(prev).length>0; let n=0; if(existed)for(const [imei,active] of Object.entries(now)) if(active && prev[imei]===false)n++; localStorage.setItem(key,JSON.stringify(now)); el('newActs').textContent=existed?n:'—'; el('snapshotTxt').textContent=existed?'IMEI que pasaron de pendiente a activado':'Primera carga: se guardó la referencia para mañana'}
-function render(){const date=el('dateFilter').value; const base=getBase(); const daySales=base.filter(r=>r.sell&&ymd(r.sell)===date); const dayActs=base.filter(r=>r.active&&ymd(r.active)===date); const actSales=daySales.filter(r=>r.active); const pending=daySales.filter(r=>!r.active); const month=date.slice(0,7); const monthSales=base.filter(r=>r.sell&&ymd(r.sell).startsWith(month)); el('salesDay').textContent=daySales.length; el('actsDay').textContent=dayActs.length; el('salesActivated').textContent=actSales.length; el('salesPending').textContent=pending.length; el('activationRate').textContent=daySales.length?(actSales.length/daySales.length*100).toFixed(1)+'%':'0%'; el('salesMonthTxt').textContent=monthSales.length+' ventas en el mes filtrado';
+function render(){const date=el('dateFilter').value; fillSelect('staffFilter','reporter'); const base=getBase(); const daySales=base.filter(r=>r.sell&&ymd(r.sell)===date); const dayActs=base.filter(r=>r.active&&ymd(r.active)===date); const actSales=daySales.filter(r=>r.active); const pending=daySales.filter(r=>!r.active); const month=date.slice(0,7); const monthSales=base.filter(r=>r.sell&&ymd(r.sell).startsWith(month)); el('salesDay').textContent=daySales.length; el('actsDay').textContent=dayActs.length; el('salesActivated').textContent=actSales.length; el('salesPending').textContent=pending.length; el('activationRate').textContent=daySales.length?(actSales.length/daySales.length*100).toFixed(1)+'%':'0%'; el('salesMonthTxt').textContent=monthSales.length+' ventas en el mes filtrado';
 renderPromoters(monthSales,daySales,date);
-const sc={}; daySales.forEach(r=>sc[r.reporter||'Sin reporter']=(sc[r.reporter||'Sin reporter']||0)+1); bars(sc,'staffBars'); const mc={}; daySales.forEach(r=>mc[r.model||'Sin modelo']=(mc[r.model||'Sin modelo']||0)+1); bars(mc,'modelBars');
+const sc={}; monthSales.forEach(r=>sc[r.reporter||'Sin reporter']=(sc[r.reporter||'Sin reporter']||0)+1); bars(sc,'staffBars'); const mc={}; monthSales.forEach(r=>mc[r.model||'Sin modelo']=(mc[r.model||'Sin modelo']||0)+1); bars(mc,'modelBars');
 el('salesBody').innerHTML=daySales.sort((a,b)=>b.sell-a.sell).map(r=>'<tr><td>'+hm(r.sell)+'</td><td>'+esc(r.store)+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.imei)+'</td><td>'+esc(r.reporter)+'</td><td>'+(r.active?esc(ymd(r.active)+' '+hm(r.active)):'—')+'</td><td><span class="badge '+(r.active?'b-green':'b-red')+'">'+(r.active?'ACTIVADO':'PENDIENTE')+'</span></td></tr>').join('')||'<tr><td colspan="7" class="empty">No hay ventas para esta fecha/filtro.</td></tr>';
-el('actsBody').innerHTML=dayActs.sort((a,b)=>b.active-a.active).map(r=>'<tr><td>'+hm(r.active)+'</td><td>'+esc(r.store)+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.imei)+'</td><td>'+(r.sell?esc(ymd(r.sell)+' '+hm(r.sell)):'—')+'</td><td>'+esc(r.reporter)+'</td></tr>').join('')||'<tr><td colspan="6" class="empty">No hay activaciones para esta fecha/filtro.</td></tr>';
 }
 
 const MONTHLY_TARGET=90;
@@ -93,7 +103,7 @@ function renderPromoters(monthSales,daySales,date){
  monthSales.forEach(r=>{const t=stats.get(r.reporter);t.total++;if(!r.active)t.pending++;t.days[r.sell.getDate()-1]++;if(ymd(r.sell)<=date)t.toDate++;});
  names.sort((a,b)=>stats.get(b).total-stats.get(a).total||a.localeCompare(b,'es'));
  el('monthLabel').textContent='Mes '+month+' · Meta: 90 unidades por promotor. Cumplimiento: total reportado ÷ 90. Proyección: ventas hasta '+date+' ÷ '+elapsed+' días × '+count+' días ÷ 90. Inactivos: sin fecha de activación; pulsa la cantidad para ver los equipos.';
- el('dailyHead').innerHTML='<tr><th>Promotor</th>'+Array.from({length:count},(_,i)=>'<th>'+(i+1)+'</th>').join('')+'<th class="metric">Cumpl. %</th><th class="metric">Proy. %</th><th>Inactivos</th><th class="total">Total mes</th></tr>';
+ el('dailyHead').innerHTML='<tr><th>Promotor</th>'+Array.from({length:count},(_,i)=>'<th>D'+(i+1)+'</th>').join('')+'<th class="metric">Cumpl. %</th><th class="metric">Proy. %</th><th>Inactivos</th><th class="total">Total mes</th></tr>';
  el('dailyBody').innerHTML=names.map((name,i)=>{const t=stats.get(name),p=progress(t.total,elapsed,count),projection=progress(t.toDate,elapsed,count)[1];return '<tr><td title="'+esc(name||'Sin promotor')+'">'+esc(shortName(name))+'</td>'+t.days.map(n=>'<td>'+n+'</td>').join('')+'<td>'+p[0]+'</td><td>'+projection+'</td><td class="bad">'+(t.pending?'<button class="btn bad" data-pending="'+i+'">'+t.pending+'</button>':'0')+'</td><td><b>'+t.total+'</b></td></tr>';}).join('')||'<tr><td colspan="'+(count+5)+'" class="empty">No hay ventas reportadas en este mes.</td></tr>';
  el('dailyBody').querySelectorAll('[data-pending]').forEach(b=>b.onclick=()=>{pendingReporter=names[Number(b.dataset.pending)];renderPending(monthSales);el('pendingPanel').scrollIntoView({behavior:'smooth',block:'center'});});
  const totals=progress(monthSales.length,elapsed,count,names.length),projection=progress(monthSales.filter(r=>ymd(r.sell)<=date).length,elapsed,count,names.length)[1];
