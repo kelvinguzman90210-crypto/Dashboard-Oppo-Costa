@@ -17,6 +17,7 @@ main{max-width:1400px;margin:auto;padding:24px}
 .full{grid-column:1/-1}.barrow{display:grid;grid-template-columns:210px 1fr 45px;gap:10px;align-items:center;margin:9px 0;font-size:12px}.bar{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--green)}
 .actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;cursor:pointer;font-weight:600}.btn.primary{background:var(--green);color:#fff;border-color:var(--green)}
 .monthly{font-size:11px}.monthly th,.monthly td{padding:8px 3px;text-align:center}.monthly th:first-child,.monthly td:first-child{text-align:left;white-space:normal;width:120px;min-width:100px}.monthly .btn{padding:3px 6px}.monthly th{white-space:normal}.monthly th.metric{width:65px}.monthly th.total{width:55px}
+.regional{margin-bottom:18px}.regional-note{font-size:12px;color:var(--muted)}.regional-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:18px 0}.regional-stats span{display:block;font-size:12px;color:var(--muted)}.regional-stats strong{display:block;font-size:28px;margin-top:5px}.regional-stats>div:first-child strong{color:var(--green)}.regional-stats>div:nth-child(3) strong{color:var(--amber)}.regional-track{height:28px;background:#fde68a;border-radius:8px;overflow:hidden}.regional-track>div{height:100%;background:var(--green);transition:width .3s}.regional-legend{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;margin-top:10px}.regional-legend span:first-child{color:#047857}.regional-legend span:last-child{color:#a16207}@media(max-width:600px){.regional-stats{grid-template-columns:repeat(2,1fr)}}
 .empty{padding:26px;text-align:center;color:var(--muted)}
 @media(max-width:1000px){.cards{grid-template-columns:repeat(2,1fr)}.controls{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.full{grid-column:auto}}@media(max-width:600px){main{padding:14px}.cards,.controls{grid-template-columns:1fr}.header{align-items:flex-start}.actions{justify-content:flex-end}}
 </style>
@@ -26,6 +27,7 @@ main{max-width:1400px;margin:auto;padding:24px}
 <main>
 <input id="fileInput" type="file" accept=".xlsx,.xls" hidden />
 <section id="dashboard" style="display:none">
+<div class="panel" style="margin-bottom:18px"><h2>Ventas reportadas del mes por promotor</h2><p style="color:var(--muted);font-size:12px" id="monthLabel"></p><div class="tablewrap"><table class="monthly"><thead id="dailyHead"></thead><tbody id="dailyBody"></tbody><tfoot id="dailyFoot"></tfoot></table></div></div>
 <div class="controls">
 <div class="control"><label>Fecha de análisis</label><input type="date" id="dateFilter"></div>
 <div class="control"><label>Promotor / Reporter</label><select id="staffFilter"><option value="">Todos</option></select></div>
@@ -33,7 +35,7 @@ main{max-width:1400px;margin:auto;padding:24px}
 <div class="control"><label>Modelo</label><select id="modelFilter"><option value="">Todos</option></select></div>
 <div class="control"><label>Buscar IMEI</label><input id="imeiFilter" placeholder="IMEI..." inputmode="numeric"></div>
 </div>
-<div class="panel" style="margin-bottom:18px"><h2>Ventas reportadas del mes por promotor</h2><p style="color:var(--muted);font-size:12px" id="monthLabel"></p><div class="tablewrap"><table class="monthly"><thead id="dailyHead"></thead><tbody id="dailyBody"></tbody><tfoot id="dailyFoot"></tfoot></table></div></div>
+<section class="panel regional" aria-label="Cumplimiento regional"><h2>REGIONAL COSTA IR</h2><p id="regionalMeta" class="regional-note"></p><div class="regional-stats"><div><span>Reportadas</span><strong id="regionalSales">0</strong></div><div><span>Meta mensual</span><strong id="regionalTarget">0</strong></div><div><span>Faltan por cumplir</span><strong id="regionalRemaining">0</strong></div><div><span>Cumplimiento</span><strong id="regionalPercent">0%</strong></div></div><div id="regionalChart" class="regional-track" role="img"><div id="regionalFill"></div></div><div class="regional-legend"><span>● Ventas reportadas</span><span>● Pendiente para la meta</span></div><p id="regionalStatus" class="regional-note"></p></section>
 <div class="panel" id="pendingPanel" style="display:none;margin-bottom:18px"><div class="actions" style="justify-content:space-between;margin-bottom:12px"><h2 id="pendingTitle">Equipos inactivos del mes</h2><button class="btn" id="closePending">Cerrar detalle</button></div><div class="tablewrap"><table><thead><tr><th>Fecha de venta</th><th>Promotor</th><th>PDV</th><th>Modelo</th><th>IMEI</th></tr></thead><tbody id="pendingBody"></tbody></table></div></div>
 <div class="cards">
 <div class="card"><div class="k">Ventas del día</div><div class="v" id="salesDay">0</div><div class="s" id="salesMonthTxt"></div></div>
@@ -78,11 +80,29 @@ function bars(data,container){const entries=Object.entries(data).sort((a,b)=>b[1
 function snapshotDiff(){const key='oppo-imei-snapshot-v1'; let prev={}; try{prev=JSON.parse(localStorage.getItem(key)||'{}')}catch{} const now={}; rows.forEach(r=>now[r.imei]=!!r.active); const existed=Object.keys(prev).length>0; let n=0; if(existed)for(const [imei,active] of Object.entries(now)) if(active && prev[imei]===false)n++; localStorage.setItem(key,JSON.stringify(now)); el('newActs').textContent=existed?n:'—'; el('snapshotTxt').textContent=existed?'IMEI que pasaron de pendiente a activado':'Primera carga: se guardó la referencia para mañana'}
 function render(){const date=el('dateFilter').value; fillSelect('staffFilter','reporter'); const base=getBase(); const daySales=base.filter(r=>r.sell&&ymd(r.sell)===date); const dayActs=base.filter(r=>r.active&&ymd(r.active)===date); const actSales=daySales.filter(r=>r.active); const pending=daySales.filter(r=>!r.active); const month=date.slice(0,7); const monthSales=base.filter(r=>r.sell&&ymd(r.sell).startsWith(month)); el('salesDay').textContent=daySales.length; el('actsDay').textContent=dayActs.length; el('salesActivated').textContent=actSales.length; el('salesPending').textContent=pending.length; el('activationRate').textContent=daySales.length?(actSales.length/daySales.length*100).toFixed(1)+'%':'0%'; el('salesMonthTxt').textContent=monthSales.length+' ventas en el mes filtrado';
 renderPromoters(monthSales,daySales,date);
+renderRegional(date);
 const sc={}; monthSales.forEach(r=>sc[r.reporter||'Sin reporter']=(sc[r.reporter||'Sin reporter']||0)+1); bars(sc,'staffBars'); const mc={}; monthSales.forEach(r=>mc[r.model||'Sin modelo']=(mc[r.model||'Sin modelo']||0)+1); bars(mc,'modelBars');
 el('salesBody').innerHTML=daySales.sort((a,b)=>b.sell-a.sell).map(r=>'<tr><td>'+hm(r.sell)+'</td><td>'+esc(r.store)+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.imei)+'</td><td>'+esc(r.reporter)+'</td><td>'+(r.active?esc(ymd(r.active)+' '+hm(r.active)):'—')+'</td><td><span class="badge '+(r.active?'b-green':'b-red')+'">'+(r.active?'ACTIVADO':'PENDIENTE')+'</span></td></tr>').join('')||'<tr><td colspan="7" class="empty">No hay ventas para esta fecha/filtro.</td></tr>';
 }
 
 const MONTHLY_TARGET=90;
+function regionalStats(date){
+ const promoters=recentPromoters(date), roster=new Set(promoters);
+ const sales=rows.filter(r=>r.sell&&ymd(r.sell).startsWith(date.slice(0,7))&&roster.has(r.reporter)).length;
+ const target=promoters.length*MONTHLY_TARGET;
+ return {people:promoters.length,sales,target,remaining:Math.max(0,target-sales),percent:target?sales/target*100:0};
+}
+function renderRegional(date){
+ const t=regionalStats(date);
+ el('regionalMeta').textContent='Mes '+date.slice(0,7)+' · '+t.people+' promotores × '+MONTHLY_TARGET+' unidades. Total regional sin filtros de promotor, PDV, modelo o IMEI.';
+ el('regionalSales').textContent=t.sales;
+ el('regionalTarget').textContent=t.target;
+ el('regionalRemaining').textContent=t.remaining;
+ el('regionalPercent').textContent=t.target?t.percent.toFixed(1)+'%':'—';
+ el('regionalFill').style.width=Math.min(100,t.percent)+'%';
+ el('regionalChart').setAttribute('aria-label',t.sales+' unidades reportadas de '+t.target+'; faltan '+t.remaining);
+ el('regionalStatus').textContent=!t.target?'Sin promotores con ventas reportadas en los últimos cuatro meses.':t.sales>=t.target?'Meta cumplida'+(t.sales>t.target?' · '+(t.sales-t.target)+' unidades por encima de la meta.':'.'):'Faltan '+t.remaining+' unidades para alcanzar el 100% de la meta.';
+}
 function shortName(name){
  const parts=String(name||'').trim().split(/\s+/);
  if(!parts[0])return 'Sin promotor';
