@@ -16,6 +16,7 @@ main{max-width:1400px;margin:auto;padding:24px}.drop{border:2px dashed #94a3b8;b
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;overflow:hidden}.panel h2{font-size:15px;margin:0 0 12px}.tablewrap{overflow:auto;max-height:420px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#fff;color:var(--muted);font-weight:600}.badge{padding:3px 7px;border-radius:999px;font-size:10px;font-weight:700}.b-green{background:#dcfce7;color:#166534}.b-red{background:#fee2e2;color:#991b1b}
 .full{grid-column:1/-1}.barrow{display:grid;grid-template-columns:210px 1fr 45px;gap:10px;align-items:center;margin:9px 0;font-size:12px}.bar{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--green)}
 .actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;cursor:pointer;font-weight:600}.btn.primary{background:var(--green);color:#fff;border-color:var(--green)}
+.monthly{font-size:11px}.monthly th,.monthly td{padding:8px 3px;text-align:center}.monthly th:first-child,.monthly td:first-child{text-align:left;white-space:normal;width:120px;min-width:100px}.monthly .btn{padding:3px 6px}.monthly th{white-space:normal}.monthly th.metric{width:65px}.monthly th.total{width:55px}
 .empty{padding:26px;text-align:center;color:var(--muted)}
 @media(max-width:1000px){.cards{grid-template-columns:repeat(2,1fr)}.controls{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.full{grid-column:auto}}@media(max-width:600px){main{padding:14px}.cards,.controls{grid-template-columns:1fr}.header{align-items:flex-start}.actions{justify-content:flex-end}}
 </style>
@@ -33,7 +34,7 @@ main{max-width:1400px;margin:auto;padding:24px}.drop{border:2px dashed #94a3b8;b
 <div class="control"><label>Modelo</label><select id="modelFilter"><option value="">Todos</option></select></div>
 <div class="control"><label>Buscar IMEI</label><input id="imeiFilter" placeholder="IMEI..." inputmode="numeric"></div>
 </div>
-<div class="panel" style="margin-bottom:18px"><h2>Ventas reportadas del mes por promotor</h2><p style="color:var(--muted);font-size:12px" id="monthLabel"></p><div class="tablewrap"><table><thead id="dailyHead"></thead><tbody id="dailyBody"></tbody><tfoot id="dailyFoot"></tfoot></table></div></div>
+<div class="panel" style="margin-bottom:18px"><h2>Ventas reportadas del mes por promotor</h2><p style="color:var(--muted);font-size:12px" id="monthLabel"></p><div class="tablewrap"><table class="monthly"><thead id="dailyHead"></thead><tbody id="dailyBody"></tbody><tfoot id="dailyFoot"></tfoot></table></div></div>
 <div class="panel" id="pendingPanel" style="display:none;margin-bottom:18px"><div class="actions" style="justify-content:space-between;margin-bottom:12px"><h2 id="pendingTitle">Equipos inactivos del mes</h2><button class="btn" id="closePending">Cerrar detalle</button></div><div class="tablewrap"><table><thead><tr><th>Fecha de venta</th><th>Promotor</th><th>PDV</th><th>Modelo</th><th>IMEI</th></tr></thead><tbody id="pendingBody"></tbody></table></div></div>
 <div class="cards">
 <div class="card"><div class="k">Ventas del día</div><div class="v" id="salesDay">0</div><div class="s" id="salesMonthTxt"></div></div>
@@ -72,18 +73,31 @@ el('salesBody').innerHTML=daySales.sort((a,b)=>b.sell-a.sell).map(r=>'<tr><td>'+
 el('actsBody').innerHTML=dayActs.sort((a,b)=>b.active-a.active).map(r=>'<tr><td>'+hm(r.active)+'</td><td>'+esc(r.store)+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.imei)+'</td><td>'+(r.sell?esc(ymd(r.sell)+' '+hm(r.sell)):'—')+'</td><td>'+esc(r.reporter)+'</td></tr>').join('')||'<tr><td colspan="6" class="empty">No hay activaciones para esta fecha/filtro.</td></tr>';
 }
 
+const MONTHLY_TARGET=90;
+function shortName(name){
+ const parts=String(name||'').trim().split(/\s+/);
+ if(!parts[0])return 'Sin promotor';
+ // Reportes con dos nombres y dos apellidos: el primer apellido es el penúltimo.
+ const surname=parts.length>=4?parts[parts.length-2]:parts[1];
+ return parts[0]+(surname?' '+surname:'');
+}
+function progress(total,elapsed,days,people=1){
+ const target=MONTHLY_TARGET*people;
+ return target?[(total/target*100).toFixed(1)+'%',(total/elapsed*days/target*100).toFixed(1)+'%']:['—','—'];
+}
 function renderPromoters(monthSales,daySales,date){
  const month=date.slice(0,7), count=new Date(Number(date.slice(0,4)),Number(date.slice(5,7)),0).getDate();
+ const elapsed=Number(date.slice(8,10));
  const names=[...new Set(monthSales.map(r=>r.reporter))].sort((a,b)=>a.localeCompare(b,'es'));
- const stats=new Map(names.map(name=>[name,{total:0,pending:0,today:0,days:Array(count).fill(0)}]));
- monthSales.forEach(r=>{const t=stats.get(r.reporter);t.total++;if(!r.active)t.pending++;t.days[r.sell.getDate()-1]++;});
- daySales.forEach(r=>{const t=stats.get(r.reporter);if(t)t.today++;});
+ const stats=new Map(names.map(name=>[name,{total:0,pending:0,toDate:0,days:Array(count).fill(0)}]));
+ monthSales.forEach(r=>{const t=stats.get(r.reporter);t.total++;if(!r.active)t.pending++;t.days[r.sell.getDate()-1]++;if(ymd(r.sell)<=date)t.toDate++;});
  names.sort((a,b)=>stats.get(b).total-stats.get(a).total||a.localeCompare(b,'es'));
- el('monthLabel').textContent='Mes '+month+' · Promotores ordenados de mayor a menor venta reportada. Inactivos: ventas del mes sin fecha de activación. Pulsa la cantidad para ver los equipos.';
- el('dailyHead').innerHTML='<tr><th>Promotor</th>'+Array.from({length:count},(_,i)=>'<th>Día '+(i+1)+'</th>').join('')+'<th>Inactivos</th><th>Total mes reportado</th></tr>';
- el('dailyBody').innerHTML=names.map((name,i)=>{const t=stats.get(name);return '<tr><td>'+esc(name||'Sin promotor')+'</td>'+t.days.map(n=>'<td>'+n+'</td>').join('')+'<td class="bad">'+(t.pending?'<button class="btn bad" data-pending="'+i+'">'+t.pending+'</button>':'0')+'</td><td><b>'+t.total+'</b></td></tr>';}).join('')||'<tr><td colspan="'+(count+3)+'" class="empty">No hay ventas reportadas en este mes.</td></tr>';
+ el('monthLabel').textContent='Mes '+month+' · Meta: 90 unidades por promotor. Cumplimiento: total reportado ÷ 90. Proyección: ventas hasta '+date+' ÷ '+elapsed+' días × '+count+' días ÷ 90. Inactivos: sin fecha de activación; pulsa la cantidad para ver los equipos.';
+ el('dailyHead').innerHTML='<tr><th>Promotor</th>'+Array.from({length:count},(_,i)=>'<th>'+(i+1)+'</th>').join('')+'<th class="metric">Cumpl. %</th><th class="metric">Proy. %</th><th>Inactivos</th><th class="total">Total mes</th></tr>';
+ el('dailyBody').innerHTML=names.map((name,i)=>{const t=stats.get(name),p=progress(t.total,elapsed,count),projection=progress(t.toDate,elapsed,count)[1];return '<tr><td title="'+esc(name||'Sin promotor')+'">'+esc(shortName(name))+'</td>'+t.days.map(n=>'<td>'+n+'</td>').join('')+'<td>'+p[0]+'</td><td>'+projection+'</td><td class="bad">'+(t.pending?'<button class="btn bad" data-pending="'+i+'">'+t.pending+'</button>':'0')+'</td><td><b>'+t.total+'</b></td></tr>';}).join('')||'<tr><td colspan="'+(count+5)+'" class="empty">No hay ventas reportadas en este mes.</td></tr>';
  el('dailyBody').querySelectorAll('[data-pending]').forEach(b=>b.onclick=()=>{pendingReporter=names[Number(b.dataset.pending)];renderPending(monthSales);el('pendingPanel').scrollIntoView({behavior:'smooth',block:'center'});});
- el('dailyFoot').innerHTML='<tr><td><b>Total diario</b></td>'+Array.from({length:count},(_,i)=>'<td><b>'+names.reduce((sum,name)=>sum+stats.get(name).days[i],0)+'</b></td>').join('')+'<td class="bad"><b>'+monthSales.filter(r=>!r.active).length+'</b></td><td><b>'+monthSales.length+'</b></td></tr>';
+ const totals=progress(monthSales.length,elapsed,count,names.length),projection=progress(monthSales.filter(r=>ymd(r.sell)<=date).length,elapsed,count,names.length)[1];
+ el('dailyFoot').innerHTML='<tr><td><b>Total diario</b></td>'+Array.from({length:count},(_,i)=>'<td><b>'+names.reduce((sum,name)=>sum+stats.get(name).days[i],0)+'</b></td>').join('')+'<td><b>'+totals[0]+'</b></td><td><b>'+projection+'</b></td><td class="bad"><b>'+monthSales.filter(r=>!r.active).length+'</b></td><td><b>'+monthSales.length+'</b></td></tr>';
  renderPending(monthSales);
 }
 function renderPending(monthSales){
